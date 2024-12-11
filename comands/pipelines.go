@@ -83,6 +83,8 @@ type pipelinesApp struct {
 	timerUpdate time.Duration
 	timer       timer.Model
 	buf         *strings.Builder
+
+	lastRequestPipelineTime time.Time
 }
 
 func (m pipelinesApp) Init() tea.Cmd {
@@ -104,11 +106,13 @@ func (m pipelinesApp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return mNew, mNew.timer.Start()
-
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "u":
+			m.timer.Timeout = time.Millisecond
+			return m, m.timer.Start()
 		}
 	}
 
@@ -194,6 +198,8 @@ func requestJobs(m pipelinesApp) (pipelinesApp, error) {
 		}
 	}
 
+	m.lastRequestPipelineTime = time.Now()
+
 	return m, nil
 }
 
@@ -219,7 +225,11 @@ func (m pipelinesApp) View() string {
 	m.buf.WriteString(m.timer.View())
 	m.buf.WriteString("\n")
 
-	m.buf.WriteString(internal.HelpStyle.Render("q: exit\n"))
+	m.buf.WriteString("last update: ")
+	m.buf.WriteString(m.lastRequestPipelineTime.Format(time.RFC3339))
+	m.buf.WriteString("\n")
+
+	m.buf.WriteString(internal.HelpStyle.Render("q: exit | u: update now\n"))
 
 	return m.buf.String()
 }
