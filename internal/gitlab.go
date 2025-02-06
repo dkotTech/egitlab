@@ -103,6 +103,39 @@ func getResp[T any](url, token string, dst *T) error {
 	return nil
 }
 
+func postResp[T any](url, token string, body io.Reader, dst *T) error {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("PRIVATE-TOKEN", token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s, response: %s", resp.Status, string(b))
+	}
+
+	err = json.Unmarshal(b, dst)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type GitlabPipeline struct {
 	Id     int    `json:"id"`
 	Ref    string `json:"ref"`
@@ -125,6 +158,7 @@ func GetLatestPipeline(host, project, ref, token string) (GitlabPipeline, error)
 }
 
 type GitlabJob struct {
+	ID       int64       `json:"id"`
 	Status   string      `json:"status"`
 	Stage    string      `json:"stage"`
 	Name     string      `json:"name"`
@@ -154,6 +188,38 @@ func GetLatestTriggeredJobs(host, project string, pipelineID int, token string) 
 	err := getResp(fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/bridges", host, url.QueryEscape(project), pipelineID), token, &resp)
 	if err != nil {
 		return nil, err
+	}
+
+	return resp, nil
+}
+
+type RunJobResponse struct {
+	Name   string `json:"name"`
+	WebUrl string `json:"web_url"`
+}
+
+func RunJob(host, project string, jobID int64, token string) (RunJobResponse, error) {
+	var resp RunJobResponse
+
+	err := postResp(fmt.Sprintf("%s/api/v4/projects/%s/jobs/%d/play", host, url.QueryEscape(project), jobID), token, nil, &resp)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
+}
+
+type RetryJobResponse struct {
+	Name   string `json:"name"`
+	WebUrl string `json:"web_url"`
+}
+
+func RetryJob(host, project string, jobID int64, token string) (RetryJobResponse, error) {
+	var resp RetryJobResponse
+
+	err := postResp(fmt.Sprintf("%s/api/v4/projects/%s/jobs/%d/retry", host, url.QueryEscape(project), jobID), token, nil, &resp)
+	if err != nil {
+		return resp, err
 	}
 
 	return resp, nil
