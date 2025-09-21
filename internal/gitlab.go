@@ -1,140 +1,10 @@
 package internal
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
-
-	"github.com/urfave/cli/v2"
 )
-
-type GitlabInfo struct {
-	GitlabHost  string
-	RefName     string
-	ProjectName string
-}
-
-func (g *GitlabInfo) CliFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{
-			Name:  "gitlab-host",
-			Value: "",
-			Usage: "gitlab host",
-		},
-		&cli.StringFlag{
-			Name:  "ref",
-			Value: "master",
-			Usage: "git ref",
-		},
-		&cli.StringFlag{
-			Name:  "gitlab-project",
-			Value: "",
-			Usage: "gitlab project name",
-		},
-		&cli.BoolFlag{
-			Name:  "use-git-cli",
-			Value: true,
-			Usage: "using git cli",
-		},
-	}
-}
-
-func (g *GitlabInfo) Parse(cCtx *cli.Context) error {
-	g.GitlabHost = cCtx.String("gitlab-host")
-	g.RefName = cCtx.String("ref")
-	g.ProjectName = cCtx.String("gitlab-project")
-
-	useGitCli := cCtx.Bool("use-git-cli")
-
-	if useGitCli {
-		ref, err := GetCurrentGitRef()
-		if err != nil {
-			return err
-		}
-
-		host, project, err := GetCurrentGitProjectName()
-		if err != nil {
-			return err
-		}
-
-		g.GitlabHost = host
-		g.RefName = ref
-		g.ProjectName = project
-	}
-
-	return nil
-}
-
-var httpClient = http.DefaultClient
-
-func getResp[T any](url, token string, dst *T) error {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("PRIVATE-TOKEN", token)
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s, response: %s", resp.Status, string(b))
-	}
-
-	err = json.Unmarshal(b, dst)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func postResp[T any](url, token string, body io.Reader, dst *T) error {
-	req, err := http.NewRequest("POST", url, body)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("PRIVATE-TOKEN", token)
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s, response: %s", resp.Status, string(b))
-	}
-
-	err = json.Unmarshal(b, dst)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 
 type GitlabPipeline struct {
 	Id     int    `json:"id"`
@@ -142,7 +12,7 @@ type GitlabPipeline struct {
 	WebUrl string `json:"web_url"`
 }
 
-func GetLatestPipeline(host, project, ref, token string) (GitlabPipeline, error) {
+func GetLatestPipeline(host, project, ref string, token Credentials) (GitlabPipeline, error) {
 	var resp []GitlabPipeline
 
 	err := getResp(fmt.Sprintf("%s/api/v4/projects/%s/pipelines?ref=%s&per_page=%d", host, url.QueryEscape(project), ref, 1), token, &resp)
@@ -171,7 +41,7 @@ type GitlabJob struct {
 	WebUrl string `json:"web_url"`
 }
 
-func GetLatestJobs(host, project string, pipelineID int, token string) ([]GitlabJob, error) {
+func GetLatestJobs(host, project string, pipelineID int, token Credentials) ([]GitlabJob, error) {
 	var resp []GitlabJob
 
 	err := getResp(fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/jobs", host, url.QueryEscape(project), pipelineID), token, &resp)
@@ -182,7 +52,7 @@ func GetLatestJobs(host, project string, pipelineID int, token string) ([]Gitlab
 	return resp, nil
 }
 
-func GetLatestTriggeredJobs(host, project string, pipelineID int, token string) ([]GitlabJob, error) {
+func GetLatestTriggeredJobs(host, project string, pipelineID int, token Credentials) ([]GitlabJob, error) {
 	var resp []GitlabJob
 
 	err := getResp(fmt.Sprintf("%s/api/v4/projects/%s/pipelines/%d/bridges", host, url.QueryEscape(project), pipelineID), token, &resp)
@@ -198,7 +68,7 @@ type RunJobResponse struct {
 	WebUrl string `json:"web_url"`
 }
 
-func RunJob(host, project string, jobID int64, token string) (RunJobResponse, error) {
+func RunJob(host, project string, jobID int64, token Credentials) (RunJobResponse, error) {
 	var resp RunJobResponse
 
 	err := postResp(fmt.Sprintf("%s/api/v4/projects/%s/jobs/%d/play", host, url.QueryEscape(project), jobID), token, nil, &resp)
@@ -214,7 +84,7 @@ type RetryJobResponse struct {
 	WebUrl string `json:"web_url"`
 }
 
-func RetryJob(host, project string, jobID int64, token string) (RetryJobResponse, error) {
+func RetryJob(host, project string, jobID int64, token Credentials) (RetryJobResponse, error) {
 	var resp RetryJobResponse
 
 	err := postResp(fmt.Sprintf("%s/api/v4/projects/%s/jobs/%d/retry", host, url.QueryEscape(project), jobID), token, nil, &resp)

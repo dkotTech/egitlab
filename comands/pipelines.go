@@ -39,10 +39,12 @@ func NewPipelinesCommand() *cli.Command {
 	}
 
 	var credentials internal.Credentials
-	var gitlabInfo internal.GitlabInfo
+	var serviceInfo internal.ServiceInfo
+	var httpSettings internal.HttpSettings
 
 	commandFlags = append(commandFlags, credentials.CliFlags()...)
-	commandFlags = append(commandFlags, gitlabInfo.CliFlags()...)
+	commandFlags = append(commandFlags, serviceInfo.CliFlags()...)
+	commandFlags = append(commandFlags, httpSettings.CliFlags()...)
 
 	return &cli.Command{
 		Name:    "pipelines",
@@ -55,7 +57,12 @@ func NewPipelinesCommand() *cli.Command {
 				return err
 			}
 
-			err = gitlabInfo.Parse(cCtx)
+			err = serviceInfo.Parse(cCtx)
+			if err != nil {
+				return err
+			}
+
+			err = httpSettings.Parse(cCtx)
 			if err != nil {
 				return err
 			}
@@ -64,7 +71,7 @@ func NewPipelinesCommand() *cli.Command {
 			createJobs := cCtx.StringSlice("create-job")
 			retryJobs := cCtx.StringSlice("retry-job")
 
-			pipeline, err := internal.GetLatestPipeline(gitlabInfo.GitlabHost, gitlabInfo.ProjectName, gitlabInfo.RefName, credentials.Token())
+			pipeline, err := internal.GetLatestPipeline(serviceInfo.Host, serviceInfo.ProjectName, serviceInfo.RefName, credentials)
 			if err != nil {
 				return err
 			}
@@ -73,7 +80,7 @@ func NewPipelinesCommand() *cli.Command {
 				headers:      []string{},
 				rows:         [][]string{},
 				pipelineInfo: pipeline,
-				gitlabInfo:   gitlabInfo,
+				serviceInfo:  serviceInfo,
 				credentials:  credentials,
 				buf:          new(strings.Builder),
 
@@ -98,7 +105,7 @@ type pipelinesApp struct {
 	rows    [][]string
 
 	pipelineInfo internal.GitlabPipeline
-	gitlabInfo   internal.GitlabInfo
+	serviceInfo  internal.ServiceInfo
 	credentials  internal.Credentials
 
 	timerUpdate time.Duration
@@ -116,7 +123,7 @@ type pipelinesApp struct {
 }
 
 func (m pipelinesApp) Init() tea.Cmd {
-	return tea.Batch(m.timer.Init(), tea.SetWindowTitle("gitlab-tools pipelines"))
+	return tea.Batch(m.timer.Init(), tea.SetWindowTitle(m.credentials.Service.String()+" pipelines"))
 }
 
 func (m pipelinesApp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -255,12 +262,12 @@ func requestJobs(m pipelinesApp) (pipelinesApp, error) {
 }
 
 func getGitlabJobs(m pipelinesApp) ([]internal.GitlabJob, error) {
-	jobs, err := internal.GetLatestJobs(m.gitlabInfo.GitlabHost, m.gitlabInfo.ProjectName, m.pipelineInfo.Id, m.credentials.Token())
+	jobs, err := internal.GetLatestJobs(m.serviceInfo.Host, m.serviceInfo.ProjectName, m.pipelineInfo.Id, m.credentials)
 	if err != nil {
 		return nil, err
 	}
 
-	triggeredJobs, err := internal.GetLatestTriggeredJobs(m.gitlabInfo.GitlabHost, m.gitlabInfo.ProjectName, m.pipelineInfo.Id, m.credentials.Token())
+	triggeredJobs, err := internal.GetLatestTriggeredJobs(m.serviceInfo.Host, m.serviceInfo.ProjectName, m.pipelineInfo.Id, m.credentials)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +288,7 @@ func (m pipelinesApp) View() string {
 
 	m.buf.Reset()
 
-	m.buf.WriteString(m.gitlabInfo.RefName + " ")
+	m.buf.WriteString(m.serviceInfo.RefName + " ")
 	m.buf.WriteString(internal.EncodeHyperlink(m.pipelineInfo.WebUrl, "Open pipeline"))
 	m.buf.WriteString("\n")
 
@@ -397,7 +404,7 @@ func collectJobsForManualRun(m pipelinesApp, jobs []internal.GitlabJob) (runnabl
 		case "manual":
 			runableJobsInfo.manuals[jb.Name] = jobInfo[internal.RunJobResponse]{
 				Run: func() (internal.RunJobResponse, error) {
-					return internal.RunJob(m.gitlabInfo.GitlabHost, m.gitlabInfo.ProjectName, jb.ID, m.credentials.Token())
+					return internal.RunJob(m.serviceInfo.Host, m.serviceInfo.ProjectName, jb.ID, m.credentials)
 				},
 
 				Button: fmt.Sprintf("alt+%d", altKey),
@@ -411,7 +418,7 @@ func collectJobsForManualRun(m pipelinesApp, jobs []internal.GitlabJob) (runnabl
 		case "failed":
 			runableJobsInfo.failed[jb.Name] = jobInfo[internal.RetryJobResponse]{
 				Run: func() (internal.RetryJobResponse, error) {
-					return internal.RetryJob(m.gitlabInfo.GitlabHost, m.gitlabInfo.ProjectName, jb.ID, m.credentials.Token())
+					return internal.RetryJob(m.serviceInfo.Host, m.serviceInfo.ProjectName, jb.ID, m.credentials)
 				},
 
 				Button: fmt.Sprintf("alt+%d", altKey),
@@ -425,7 +432,7 @@ func collectJobsForManualRun(m pipelinesApp, jobs []internal.GitlabJob) (runnabl
 		case "success":
 			runableJobsInfo.success[jb.Name] = jobInfo[internal.RetryJobResponse]{
 				Run: func() (internal.RetryJobResponse, error) {
-					return internal.RetryJob(m.gitlabInfo.GitlabHost, m.gitlabInfo.ProjectName, jb.ID, m.credentials.Token())
+					return internal.RetryJob(m.serviceInfo.Host, m.serviceInfo.ProjectName, jb.ID, m.credentials)
 				},
 
 				Button: fmt.Sprintf("alt+%d", altKey),
