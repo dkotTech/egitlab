@@ -18,6 +18,7 @@ func main() {
 			comands.NewSetCredentialsCommand(),
 			comands.NewPipelinesCommand(),
 			comands.NewStylesTestCommand(),
+			comands.NewPullRequestsCommand(),
 		},
 	}
 

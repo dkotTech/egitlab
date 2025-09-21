@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bufio"
 	"errors"
 	"os/exec"
 	"strings"
@@ -50,4 +51,33 @@ func GetCurrentGitProjectName() (string, string, error) {
 	}
 
 	return "", "", errors.New("can not parse git remote")
+}
+
+func GetLastCommitMessage() (string, error) {
+	cmd := exec.Command("git", "log", "-1", "--pretty=%B")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	message := strings.TrimSpace(string(output))
+	return message, nil
+}
+
+func GetHeadBranch() (string, error) {
+	cmd := exec.Command("git", "remote", "show", "origin")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "HEAD branch:") {
+			branch := strings.TrimSpace(strings.TrimPrefix(line, "HEAD branch:"))
+			return branch, nil
+		}
+	}
+
+	return "", errors.New("can not find HEAD branch")
 }

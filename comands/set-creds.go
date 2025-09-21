@@ -160,5 +160,5 @@ func (m model) View() string {
 }
 
 func (m *model) saveCredentials() error {
-	return keyring.Set(m.credentials.Service, m.credentials.User, m.inputs[0].Value())
+	return keyring.Set(string(m.credentials.Service), m.credentials.User, m.inputs[0].Value())
 }
